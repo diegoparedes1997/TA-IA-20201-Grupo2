@@ -185,10 +185,19 @@ class MonteCarloAgent(MultiAgentSearchAgent):
         else:
             return (n.U / n.N) + C * np.sqrt(np.log(n.parent.N) / n.N)
 
+    def mixMax(self, n):
+        if n.N == 0:
+            return np.inf    
+        else:
+            Q = random.uniform(0, 1)
+
+            return Q*self.maxScore + (1-Q)*(n.U / n.N)
+
     def select(self, n):
         """select a leaf node in the tree"""
         if n.children:
-            return self.select(max(n.children.keys(), key=self.ucb))
+            #return self.select(max(n.children.keys(), key=self.ucb))
+            return self.select(max(n.children.keys(), key=self.mixMax))
         else:
             return n
 
