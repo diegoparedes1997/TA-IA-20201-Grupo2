@@ -15,6 +15,8 @@
 from util import manhattanDistance
 from game import Directions
 import random, util
+import numpy as np
+import copy
 
 from game import Agent
 
@@ -163,6 +165,96 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
         """
         "*** YOUR CODE HERE ***"
         util.raiseNotDefined()
+
+class MCT_Node:
+    """Node in the Monte Carlo search tree, keeps track of the children states."""
+
+    def __init__(self, parent=None, state=None, U=0, N=0):
+        self.__dict__.update(parent=parent, state=state, U=U, N=N)
+        self.children = {}
+        self.actions = None
+
+class MonteCarloAgent(MultiAgentSearchAgent):
+
+    
+
+    def ucb(self, n, C=1.4):
+        if n.N == 0:
+            return np.inf    
+        else:
+            return (n.U / n.N) + C * np.sqrt(np.log(n.parent.N) / n.N)
+
+    def select(self, n):
+        """select a leaf node in the tree"""
+        if n.children:
+            return self.select(max(n.children.keys(), key=self.ucb))
+        else:
+            return n
+
+    def expand(self, n, k):
+        """expand the leaf node by adding all its children states"""
+        #k = 3 # Maximo numero de nodos a colocar en el arbol en la expansion
+        #legal_actions = game.actions(n.state)
+        legal_actions = n.state.getLegalActions()
+        
+        #if not n.children and not game.terminal_test(n.state):
+        if not n.children and not n.state.isWin():
+            #n.children = {MCT_Node(state=game.result(n.state, action), parent=n): action for action in random.sample(legal_actions, k = min(k,len(legal_actions)))}
+            n.children = {MCT_Node(state=n.state.generateSuccessor(0, action), parent=n): action for action in random.sample(legal_actions, k = min(k,len(legal_actions)))}#El index 0 en generateSuccessor indica que es un movimiento de Pac Man
+            #n.children = {MCT_Node(state=game.result(n.state, action), parent=n): action
+                          #for action in game.actions(n.state)}
+        return self.select(n)
+
+    def simulate(self, gameState):
+        """simulate the utility of current state by random picking a step"""
+        #while not game.terminal_test(state):
+        state = copy.deepcopy(gameState)
+        #print(gameState)
+        #print(state)
+        numeroIteraciones = 100
+        iteracion = 1
+        while (not state.isWin()) and (not state.isLose()) and (iteracion <= numeroIteraciones):
+            #action = random.choice(list(game.actions(state)))
+            #action = random.choice(list(gameState.getLegalActions()))
+            legalActions = state.getLegalActions()
+            #print(legalActions)
+            action = random.choice(list(legalActions))
+            #state = game.result(state, action)
+            state = state.generateSuccessor(0, action)
+            iteracion += 1
+        #v = game.utility(state, player)
+        v = self.evaluationFunction(state)
+        return -v
+
+    def backprop(self, n, utility):
+        """passing the utility back to all parent nodes"""
+        if utility > 0:
+            n.U += utility
+        # if utility == 0:
+        #     n.U += 0.5
+        n.N += 1
+        if n.parent:
+            self.backprop(n.parent, -utility)
+
+    def monte_carlo_tree_search(self, gameState, N=100, k=3):
+
+        root = MCT_Node(state=gameState)
+
+        for _ in range(N):
+            leaf = self.select(root)
+            child = self.expand(leaf, k)
+            #result = simulate(game, child.state)
+            result = self.simulate(child.state)
+            self.backprop(child, result)
+
+        max_state = max(root.children, key=lambda p: p.N)
+
+        return root.children.get(max_state)
+
+    def getAction(self, gameState):
+
+        #TODO
+        return self.monte_carlo_tree_search(gameState)
 
 def betterEvaluationFunction(currentGameState):
     """
