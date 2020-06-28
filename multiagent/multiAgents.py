@@ -107,6 +107,7 @@ class MultiAgentSearchAgent(Agent):
         self.index = 0 # Pacman is always agent index 0
         self.evaluationFunction = util.lookup(evalFn, globals())
         self.depth = int(depth)
+        self.maxScore = 0#Se incicializa en 0
 
 class MinimaxAgent(MultiAgentSearchAgent):
     """
@@ -224,6 +225,7 @@ class MonteCarloAgent(MultiAgentSearchAgent):
             iteracion += 1
         #v = game.utility(state, player)
         v = self.evaluationFunction(state)
+
         return -v
 
     def backprop(self, n, utility):
@@ -248,6 +250,9 @@ class MonteCarloAgent(MultiAgentSearchAgent):
             self.backprop(child, result)
 
         max_state = max(root.children, key=lambda p: p.N)
+
+        if max_state.U > self.maxScore:
+            self.maxScore = max_state.U
 
         return root.children.get(max_state)
 
