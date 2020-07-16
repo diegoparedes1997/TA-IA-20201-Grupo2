@@ -20,11 +20,27 @@ import copy
 
 from game import Agent
 
+def closestDot(originPoint, otherPoints):
+    """
+    It returns the closest point from a origin to one point of a given collection
+    """
+    closestCost = 9999999
+
+    for point in otherPoints:
+        cost = util.manhattanDistance(originPoint, point)
+        if cost < closestCost:
+            closestCost = cost
+            closestPoint = point
+
+    if closestCost == 9999999:
+        return None
+    else:
+        return (closestCost, closestPoint)
+
 class ReflexAgent(Agent):
     """
     A reflex agent chooses an action at each choice point by examining
     its alternatives via a state evaluation function.
-
     The code below is provided as a guide.  You are welcome to change
     it in any way you see fit, so long as you don't touch our method
     headers.
@@ -34,9 +50,7 @@ class ReflexAgent(Agent):
     def getAction(self, gameState):
         """
         You do not need to change this method, but you're welcome to.
-
         getAction chooses among the best options according to the evaluation function.
-
         Just like in the previous project, getAction takes a GameState and returns
         some Directions.X for some X in the set {NORTH, SOUTH, WEST, EAST, STOP}
         """
@@ -56,15 +70,12 @@ class ReflexAgent(Agent):
     def evaluationFunction(self, currentGameState, action):
         """
         Design a better evaluation function here.
-
         The evaluation function takes in the current and proposed successor
         GameStates (pacman.py) and returns a number, where higher numbers are better.
-
         The code below extracts some useful information from the state, like the
         remaining food (newFood) and Pacman position after moving (newPos).
         newScaredTimes holds the number of moves that each ghost will remain
         scared because of Pacman having eaten a power pellet.
-
         Print out these variables to see what you're getting, then combine them
         to create a masterful evaluation function.
         """
@@ -78,13 +89,13 @@ class ReflexAgent(Agent):
         "*** YOUR CODE HERE ***"
         return successorGameState.getScore()
 
+
 def scoreEvaluationFunction(currentGameState):
     """
-    This default evaluation function just returns the score of the state.
-    The score is the same one displayed in the Pacman GUI.
-
-    This evaluation function is meant for use with adversarial search agents
-    (not reflex agents).
+      This default evaluation function just returns the score of the state.
+      The score is the same one displayed in the Pacman GUI.
+      This evaluation function is meant for use with adversarial search agents
+      (not reflex agents).
     """
     return currentGameState.getScore()
 
@@ -107,7 +118,7 @@ class MultiAgentSearchAgent(Agent):
         self.index = 0 # Pacman is always agent index 0
         self.evaluationFunction = util.lookup(evalFn, globals())
         self.depth = int(depth)
-        self.maxScore = 0#Se incicializa en 0
+        self.maxScore = 0 #Se incicializa en 0
 
 class MinimaxAgent(MultiAgentSearchAgent):
     """
@@ -177,21 +188,82 @@ class MCT_Node:
 
 class MonteCarloAgent(MultiAgentSearchAgent):
 
-    
-
-    def ucb(self, n, C=1.4):
+    def ucb(self, n, C = 1.4):
         if n.N == 0:
             return np.inf    
         else:
             return (n.U / n.N) + C * np.sqrt(np.log(n.parent.N) / n.N)
 
-    def mixMax(self, n):
+    def select(self, n):
+        """select a leaf node in the tree"""
+        if n.children:
+            return self.select(max(n.children.keys(), key=self.ucb))
+        else:
+            return n
+
+    def expand(self, n, k):
+        """expand the leaf node by adding all its children states"""
+        legal_actions = n.state.getLegalActions()
+
+        if not n.children and not n.state.isWin():
+            n.children = {MCT_Node(state=n.state.generateSuccessor(0, action), parent=n):
+             action for action in random.sample(legal_actions, k = min(k,len(legal_actions)))}
+        return self.select(n)
+
+    def simulate(self, gameState):
+        """simulate the utility of current state by random picking a step"""
+        state = copy.deepcopy(gameState)
+        numeroIteraciones = 30
+        iteracion = 1
+        while (not state.isWin()) and (not state.isLose()) and (iteracion <= numeroIteraciones):
+            legalActions = state.getLegalActions()
+            action = random.choice(list(legalActions))
+            state = state.generateSuccessor(0, action)
+            iteracion += 1
+        v = self.evaluationFunction(state)
+        return -v
+
+    def backprop(self, n, utility):
+        """passing the utility back to all parent nodes"""
+        if utility > 0:
+            n.U += utility
+        n.N += 1
+        if n.parent:
+            self.backprop(n.parent, -utility)
+
+    def monte_carlo_tree_search(self, gameState, N = 20, k = 3):
+
+        root = MCT_Node(state=gameState)
+
+        for _ in range(N):
+            leaf = self.select(root)
+            child = self.expand(leaf, k)
+            result = self.simulate(child.state)
+            self.backprop(child, result)
+
+        max_state = max(root.children, key=lambda p: p.N)
+
+        return root.children.get(max_state)
+
+    def getAction(self, gameState):
+        return self.monte_carlo_tree_search(gameState)
+
+class MonteCarloAgentModified(MultiAgentSearchAgent):
+
+    def mixMax(self, n, C = 1.4):
         if n.N == 0:
             return np.inf    
         else:
-            Q = random.uniform(0, 1)
+            Q = 0.1
+            return Q*self.maxScore + (1-Q)*(n.U / n.N) +  C * np.sqrt(np.log(n.parent.N) / n.N)
 
-            return Q*self.maxScore + (1-Q)*(n.U / n.N)
+    """
+    def ucb(self, n, C = 1.4):
+        if n.N == 0:
+            return np.inf    
+        else:
+            return (n.U / n.N) + C * np.sqrt(np.log(n.parent.N) / n.N)
+    """
 
     def select(self, n):
         """select a leaf node in the tree"""
@@ -204,81 +276,84 @@ class MonteCarloAgent(MultiAgentSearchAgent):
     def expand(self, n, k):
         """expand the leaf node by adding all its children states"""
         #k = 3 # Maximo numero de nodos a colocar en el arbol en la expansion
-        #legal_actions = game.actions(n.state)
         legal_actions = n.state.getLegalActions()
         
-        #if not n.children and not game.terminal_test(n.state):
         if not n.children and not n.state.isWin():
-            #n.children = {MCT_Node(state=game.result(n.state, action), parent=n): action for action in random.sample(legal_actions, k = min(k,len(legal_actions)))}
-            n.children = {MCT_Node(state=n.state.generateSuccessor(0, action), parent=n): action for action in random.sample(legal_actions, k = min(k,len(legal_actions)))}#El index 0 en generateSuccessor indica que es un movimiento de Pac Man
-            #n.children = {MCT_Node(state=game.result(n.state, action), parent=n): action
-                          #for action in game.actions(n.state)}
+            n.children = {MCT_Node(state=n.state.generateSuccessor(0, action), parent=n):
+             action for action in random.sample(legal_actions, k = min(k,len(legal_actions)))}
         return self.select(n)
 
     def simulate(self, gameState):
         """simulate the utility of current state by random picking a step"""
-        #while not game.terminal_test(state):
+        global bestScore
         state = copy.deepcopy(gameState)
-        #print(gameState)
-        #print(state)
-        numeroIteraciones = 100
+        numeroIteraciones = 20
         iteracion = 1
         while (not state.isWin()) and (not state.isLose()) and (iteracion <= numeroIteraciones):
-            #action = random.choice(list(game.actions(state)))
-            #action = random.choice(list(gameState.getLegalActions()))
+            
             legalActions = state.getLegalActions()
-            #print(legalActions)
-            action = random.choice(list(legalActions))
-            #state = game.result(state, action)
+            # Aplicaremos una heurística a fin de que la acción a tomar no sea totalmente aleatoria
+            # Choose one of the best actions
+            scores = [self.evaluationFunction_heuristic(state, action) for action in legalActions]
+            bestScore = max(scores)
+            bestIndices = [index for index in range(len(scores)) if scores[index] == bestScore]
+            # Pick randomly among the best
+            action = legalActions[random.choice(bestIndices)]
+            #action = random.choice(list(legalActions))
             state = state.generateSuccessor(0, action)
             iteracion += 1
-        #v = game.utility(state, player)
-        v = self.evaluationFunction(state)
-
-        return -v
+        return -bestScore
 
     def backprop(self, n, utility):
         """passing the utility back to all parent nodes"""
         if utility > 0:
             n.U += utility
-        # if utility == 0:
-        #     n.U += 0.5
         n.N += 1
         if n.parent:
             self.backprop(n.parent, -utility)
 
-    def monte_carlo_tree_search(self, gameState, N=100, k=3):
+    def monte_carlo_tree_search(self, gameState, N = 3, k = 5):
 
         root = MCT_Node(state=gameState)
 
         for _ in range(N):
             leaf = self.select(root)
             child = self.expand(leaf, k)
-            #result = simulate(game, child.state)
             result = self.simulate(child.state)
             self.backprop(child, result)
 
         max_state = max(root.children, key=lambda p: p.N)
 
-        if max_state.U > self.maxScore:
-            self.maxScore = max_state.U
-
         return root.children.get(max_state)
 
+    def evaluationFunction_heuristic(self, currentGameState, action):
+
+        # Useful information you can extract from a GameState (pacman.py)
+        successorGameState = currentGameState.generatePacmanSuccessor(action)
+        newPos = successorGameState.getPacmanPosition()
+        newFood = successorGameState.getFood()
+        newGhostStates = successorGameState.getGhostStates()
+        newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
+        
+        score = 0
+        phantom_distances = [util.manhattanDistance(
+            newPos, ghost_position) for ghost_position in successorGameState.getGhostPositions()]
+
+        closest_food = closestDot(newPos, newFood.asList())
+        
+        if closest_food is not None:
+            score += (-int(closest_food[0]) * 50) - (len(newFood.asList())* 1000)
+        if action == 'stop':
+            score -= 10000
+
+        closest_phantom = min(phantom_distances)
+        if closest_phantom <= 2 and newScaredTimes[phantom_distances.index(closest_phantom)] < closest_phantom:
+            score = -float('inf')
+        if newScaredTimes[phantom_distances.index(closest_phantom)] > closest_phantom:
+            score += 100
+        
+        #print("ACTION =>",action, "SCORE=>", score, "--- [ph: ",closest_phantom," cf:",closest_food)
+        return score
+
     def getAction(self, gameState):
-
-        #TODO
         return self.monte_carlo_tree_search(gameState)
-
-def betterEvaluationFunction(currentGameState):
-    """
-    Your extreme ghost-hunting, pellet-nabbing, food-gobbling, unstoppable
-    evaluation function (question 5).
-
-    DESCRIPTION: <write something here so we know what you did>
-    """
-    "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
-
-# Abbreviation
-better = betterEvaluationFunction
